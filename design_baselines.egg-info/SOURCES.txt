@@ -43,6 +43,10 @@ design_baselines/diffusion/__init__.py
 design_baselines/diffusion/experiments.py
 design_baselines/diffusion/nets.py
 design_baselines/diffusion/trainers.py
+design_baselines/dropout/__init__.py
+design_baselines/dropout/experiments.py
+design_baselines/dropout/nets.py
+design_baselines/dropout/trainers.py
 design_baselines/dual_cem/__init__.py
 design_baselines/dual_cem/experiments.py
 design_baselines/dual_cem/nets.py

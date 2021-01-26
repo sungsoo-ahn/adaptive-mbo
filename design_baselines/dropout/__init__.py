@@ -1,8 +1,8 @@
 from design_baselines.data import StaticGraphTask
 from design_baselines.logger import Logger
 from design_baselines.utils import soft_noise, cont_noise
-from design_baselines.letgo.trainers import Smoothing
-from design_baselines.letgo.nets import ForwardModel
+from design_baselines.dropout.trainers import Smoothing
+from design_baselines.dropout.nets import ForwardModel
 from collections import defaultdict
 import tensorflow_probability as tfp
 import tensorflow as tf
@@ -15,7 +15,7 @@ from ray import tune
 from tensorboard.plugins.hparams import api as hp
 
 
-def letgo(config):
+def dropout(config):
     """Train a Score Function to solve a Model-Based Optimization
     using gradient ascent on the input design
 
@@ -82,7 +82,8 @@ def letgo(config):
         ForwardModel(
             input_shape=task.input_shape,
             hidden=config["hidden_size"],
-            noise_rate=config["noise_rate"],
+            dropout_type=config["dropout_type"],
+            dropout_rate=config["dropout_rate"],
         )
         for _ in range(config["num_models"])
     ]
@@ -91,7 +92,8 @@ def letgo(config):
         ForwardModel(
             input_shape=task.input_shape,
             hidden=config["hidden_size"],
-            noise_rate=config["noise_rate"],
+            dropout_type=config["dropout_type"],
+            dropout_rate=config["dropout_rate"],
         )
         for _ in range(config["num_models"])
     ]
@@ -122,7 +124,6 @@ def letgo(config):
         is_discrete=config["is_discrete"],
         continuous_noise_std=config.get("continuous_noise_std", 0.0),
         discrete_smoothing=config.get("discrete_smoothing", 0.6),
-        noise_rate=config["noise_rate"],
     )
 
     update = 0
@@ -174,137 +175,6 @@ def letgo(config):
 
                 logger.record("update/epoch", epoch, update)
                 logger.record("update/step", step, update)
-
-        for name, tsrs in train_statistics.items():
-            logger.record(f"train/{name}", tf.reduce_mean(tf.concat(tsrs, axis=0)), epoch)
-
-        validate_statistics = defaultdict(list)
-        for x, y in validate_data:
-            for name, tsr in trainer.validate_step(x, y).items():
-                validate_statistics[name].append(tsr)
-
-        for name, tsrs in validate_statistics.items():
-            logger.record(f"validate/{name}", tf.reduce_mean(tf.concat(tsrs, axis=0)), epoch)
-
-        logger.record("train/step", step, epoch)
-
-def letgo_ablation(config):
-    # create the training task and logger
-    logger = Logger(config["logging_dir"])
-    task = StaticGraphTask(config["task"], **config["task_kwargs"])
-
-    # save the initial dataset statistics for safe keeping
-    x = task.x
-    y = task.y
-
-    if config["normalize_ys"]:
-        # compute normalization statistics for the score
-        mu_y = np.mean(y, axis=0, keepdims=True)
-        mu_y = mu_y.astype(np.float32)
-        y = y - mu_y
-        st_y = np.std(y, axis=0, keepdims=True)
-        st_y = np.where(np.equal(st_y, 0), 1, st_y)
-        st_y = st_y.astype(np.float32)
-        y = y / st_y
-
-    else:
-
-        # compute normalization statistics for the score
-        mu_y = np.zeros_like(y[:1])
-        st_y = np.ones_like(y[:1])
-
-    if config["normalize_xs"] and not config["is_discrete"]:
-
-        # compute normalization statistics for the data vectors
-        mu_x = np.mean(x, axis=0, keepdims=True)
-        mu_x = mu_x.astype(np.float32)
-        x = x - mu_x
-        st_x = np.std(x, axis=0, keepdims=True)
-        st_x = np.where(np.equal(st_x, 0), 1, st_x)
-        st_x = st_x.astype(np.float32)
-        x = x / st_x
-
-    else:
-
-        # compute normalization statistics for the score
-        mu_x = np.zeros_like(x[:1])
-        st_x = np.ones_like(x[:1])
-
-
-    indices = np.argsort(y[:, 0])
-    train_x, train_y = x[indices[:-config["solver_samples"]]], y[indices[:-config["solver_samples"]]]
-    validate_x, validate_y = x[indices[-config["solver_samples"]:]], y[indices[-config["solver_samples"]:]]
-
-    train_data, _ = task.build(
-        x=train_x,
-        y=train_y,
-        batch_size=config["batch_size"],
-        val_size=0,
-        bootstraps=1,
-    )
-
-    # create a bootstrapped data set
-    validate_data, _ = task.build(
-        x=validate_x,
-        y=validate_y,
-        batch_size=config["batch_size"],
-        val_size=0,
-    )
-
-    sol_x = (
-        tf.math.log(soft_noise(validate_x, config["discrete_smoothing"]))
-        if config["is_discrete"]
-        else validate_x
-    )
-    sol_x = tf.Variable(sol_x)
-
-    models = [
-        ForwardModel(
-            input_shape=task.input_shape,
-            hidden=config["hidden_size"],
-            noise_rate=config["noise_rate"],
-        )
-        for _ in range(config["num_models"])
-    ]
-
-    ema_models = [
-        ForwardModel(
-            input_shape=task.input_shape,
-            hidden=config["hidden_size"],
-            noise_rate=config["noise_rate"],
-        )
-        for _ in range(config["num_models"])
-    ]
-
-    for ema_model, model in zip(ema_models, models):
-        ema_model.set_weights(model.get_weights())
-
-    trainer = Smoothing(
-        models=models,
-        model_optim=tf.keras.optimizers.Adam,
-        model_lr=config["model_lr"],
-        ema_models=ema_models,
-        ema_rate=config["ema_rate"],
-        sol_x=sol_x,
-        sol_x_optim=config["sol_x_optim"],
-        sol_x_lr=config["sol_x_lr"],
-        mc_evals=config["mc_evals"],
-        smoothing_coef=config["smoothing_coef"],
-        is_discrete=config["is_discrete"],
-        discrete_smoothing=config.get("discrete_smoothing", 0.6),
-        noise_rate=config["noise_rate"],
-    )
-
-    update = 0
-    step = 0
-    epoch = 0
-    while epoch < 100:
-        epoch += 1
-        train_statistics = defaultdict(list)
-        for x, y, b in train_data:
-            step += 1
-            for name, tsr in trainer.train_step(x, y, b).items():
-                train_statistics[name].append(tsr)
 
         for name, tsrs in train_statistics.items():
             logger.record(f"train/{name}", tf.reduce_mean(tf.concat(tsrs, axis=0)), epoch)

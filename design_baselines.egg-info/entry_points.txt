@@ -9,6 +9,7 @@ continual = design_baselines.continual.experiments:cli
 csm = design_baselines.csm.experiments:cli
 design-baselines = design_baselines.cli:cli
 diffusion = design_baselines.diffusion.experiments:cli
+dropout = design_baselines.dropout.experiments:cli
 dual-cem = design_baselines.dual_cem.experiments:cli
 energy = design_baselines.energy.experiments:cli
 entmin = design_baselines.entmin.experiments:cli

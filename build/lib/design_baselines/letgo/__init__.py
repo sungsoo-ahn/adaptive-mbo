@@ -120,6 +120,7 @@ def letgo(config):
         mc_evals=config["mc_evals"],
         smoothing_coef=config["smoothing_coef"],
         is_discrete=config["is_discrete"],
+        continuous_noise_std=config.get("continuous_noise_std", 0.0),
         discrete_smoothing=config.get("discrete_smoothing", 0.6),
         noise_rate=config["noise_rate"],
     )

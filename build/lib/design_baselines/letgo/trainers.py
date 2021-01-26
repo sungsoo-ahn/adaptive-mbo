@@ -23,6 +23,7 @@ class Smoothing(tf.Module):
         mc_evals,
         smoothing_coef,
         is_discrete,
+        continuous_noise_std,
         discrete_smoothing,
         noise_rate,
     ):
@@ -44,6 +45,8 @@ class Smoothing(tf.Module):
         self.smoothing_coef = smoothing_coef
 
         self.is_discrete = is_discrete
+
+        self.noise_std = continuous_noise_std
         self.keep = discrete_smoothing
         self.noise_rate = noise_rate
 
@@ -57,22 +60,18 @@ class Smoothing(tf.Module):
         # corrupt the inputs with noise
         if self.is_discrete:
             x0 = soft_noise(x0, self.keep)
-            x0 = tf.math.log(x0)
-            x0 = tf.math.softmax(x0)
-            x0 = cont_noise(x0, self.noise_rate)
-
+            x0 = cont_noise(x0, self.noise_std)
             x1 = tf.math.softmax(self.sol_x)
             x10 = cont_noise(x1, self.noise_rate)
             x11 = cont_noise(x1, self.noise_rate)
             x1 = tf.concat([x10, x11], axis=0)
         else:
-            #x0 = cont_noise(x0, self.noise_rate)
-
+            x0 = cont_noise(x0, self.noise_std)
             x10 = cont_noise(self.sol_x, self.noise_rate)
             x11 = cont_noise(self.sol_x, self.noise_rate)
             x1 = tf.concat([x10, x11], axis=0)
 
-        avg_total_loss = 0.0
+        avg_total_loss = 0.01
         avg_nll_loss = 0.0
         avg_smoothing_loss = 0.0
         avg_rank_correlation = 0.0

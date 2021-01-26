@@ -15,7 +15,7 @@ def cli():
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="letgo-molecule")
+@click.option("--local-dir", type=str, default="dropout-molecule")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
@@ -26,13 +26,13 @@ def molecule(local_dir, cpus, gpus, num_parallel, num_samples):
 
     # Final Version
 
-    from design_baselines.letgo import letgo
+    from design_baselines.dropout import dropout
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, include_dashboard=False, temp_dir=os.path.expanduser("~/tmp")
     )
     tune.run(
-        letgo,
+        dropout,
         config={
             "logging_dir": "data",
             "task": "MoleculeActivity-v0",
@@ -44,7 +44,7 @@ def molecule(local_dir, cpus, gpus, num_parallel, num_samples):
             "discrete_smoothing": 0.8,
             "val_size": 200,
             "batch_size": 128,
-            "updates": 10000,
+            "updates": 5000,
             "warmup": 5000,
             "update_freq": 50,
             "score_freq": 100,
@@ -55,11 +55,12 @@ def molecule(local_dir, cpus, gpus, num_parallel, num_samples):
             "solver_samples": 128,
             "sol_x_optim": "adam",
             "sol_x_lr": 0.1,
-            "noise_rate": 0.5,
             "smoothing_coef": 1e1,
-            "mc_evals": 1,
+            "mc_evals": 10,
             "ema_rate": 0.999,
             "num_models": 1,
+            "dropout_type": tune.grid_search(["gaussian", "bernoulli"]),
+            "dropout_rate": tune.grid_search([0.1, 0.2, 0.5]),
         },
         num_samples=num_samples,
         local_dir=local_dir,
@@ -69,7 +70,7 @@ def molecule(local_dir, cpus, gpus, num_parallel, num_samples):
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="letgo-gfp")
+@click.option("--local-dir", type=str, default="dropout-gfp")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
@@ -80,13 +81,21 @@ def gfp(local_dir, cpus, gpus, num_parallel, num_samples):
 
     # Final Version
 
-    from design_baselines.letgo import letgo
+    from design_baselines.dropout import dropout
+
+    """
+    for noise_rate, smoothing_coef, ema_rate in [
+        (0.1, 1e1, 0.999),
+        (0.2, 1e1, 0.999),
+        ]:
+        local_dir_ = local_dir + f"/noise_rate={noise_rate}_smoothing_coef={smoothing_coef}_ema_rate={ema_rate}"
+    """
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, include_dashboard=False, temp_dir=os.path.expanduser("~/tmp")
     )
     tune.run(
-        letgo,
+        dropout,
         config={
             "logging_dir": "data",
             "task": "GFP-v0",
@@ -94,11 +103,10 @@ def gfp(local_dir, cpus, gpus, num_parallel, num_samples):
             "is_discrete": True,
             "normalize_ys": True,
             "normalize_xs": False,
-            "continuous_noise_std": 0.2,
             "discrete_smoothing": 0.8,
             "val_size": 200,
             "batch_size": 128,
-            "updates": 10000,
+            "updates": 1000,
             "warmup": 5000,
             "update_freq": 50,
             "score_freq": 100,
@@ -109,11 +117,12 @@ def gfp(local_dir, cpus, gpus, num_parallel, num_samples):
             "solver_samples": 128,
             "sol_x_optim": "adam",
             "sol_x_lr": 0.01,
-            "noise_rate": 0.2,
-            "smoothing_coef": 1e1,
+            "smoothing_coef": 1e2,
             "mc_evals": 1,
             "ema_rate": 0.999,
             "num_models": 1,
+            "dropout_type": tune.grid_search(["gaussian", "bernoulli"]),
+            "dropout_rate": tune.grid_search([0.1, 0.2, 0.5]),
         },
         num_samples=num_samples,
         local_dir=local_dir,
@@ -123,7 +132,7 @@ def gfp(local_dir, cpus, gpus, num_parallel, num_samples):
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="letgo-superconductor")
+@click.option("--local-dir", type=str, default="dropout-superconductor")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
@@ -134,13 +143,13 @@ def superconductor(local_dir, cpus, gpus, num_parallel, num_samples):
 
     # Final Version
 
-    from design_baselines.letgo import letgo
+    from design_baselines.dropout import dropout
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, include_dashboard=False, temp_dir=os.path.expanduser("~/tmp")
     )
     tune.run(
-        letgo,
+        dropout,
         config={
             "logging_dir": "data",
             "task": "Superconductor-v0",
@@ -151,7 +160,7 @@ def superconductor(local_dir, cpus, gpus, num_parallel, num_samples):
             "continuous_noise_std": 0.2,
             "val_size": 200,
             "batch_size": 128,
-            "updates": 10000,
+            "updates": 5000,
             "warmup": 5000,
             "update_freq": 50,
             "score_freq": 100,
@@ -176,7 +185,7 @@ def superconductor(local_dir, cpus, gpus, num_parallel, num_samples):
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="letgo-dkitty")
+@click.option("--local-dir", type=str, default="dropout-dkitty")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
@@ -187,13 +196,13 @@ def dkitty(local_dir, cpus, gpus, num_parallel, num_samples):
 
     # Final Version
 
-    from design_baselines.letgo import letgo
+    from design_baselines.dropout import dropout
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, include_dashboard=False, temp_dir=os.path.expanduser("~/tmp")
     )
     tune.run(
-        letgo,
+        dropout,
         config={
             "logging_dir": "data",
             "task": "DKittyMorphology-v0",
@@ -204,7 +213,7 @@ def dkitty(local_dir, cpus, gpus, num_parallel, num_samples):
             "continuous_noise_std": 0.0,
             "val_size": 200,
             "batch_size": 128,
-            "updates": 10000,
+            "updates": 5000,
             "warmup": 5000,
             "update_freq": 50,
             "score_freq": 5000,
@@ -229,7 +238,7 @@ def dkitty(local_dir, cpus, gpus, num_parallel, num_samples):
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="letgo-ant")
+@click.option("--local-dir", type=str, default="dropout-ant")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
@@ -240,13 +249,13 @@ def ant(local_dir, cpus, gpus, num_parallel, num_samples):
 
     # Final Version
 
-    from design_baselines.letgo import letgo
+    from design_baselines.dropout import dropout
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, include_dashboard=False, temp_dir=os.path.expanduser("~/tmp")
     )
     tune.run(
-        letgo,
+        dropout,
         config={
             "logging_dir": "data",
             "task": "AntMorphology-v0",
@@ -257,7 +266,7 @@ def ant(local_dir, cpus, gpus, num_parallel, num_samples):
             "continuous_noise_std": 0.0,
             "val_size": 200,
             "batch_size": 128,
-            "updates": 10000,
+            "updates": 5000,
             "warmup": 5000,
             "update_freq": 50,
             "score_freq": 5000,
@@ -282,7 +291,7 @@ def ant(local_dir, cpus, gpus, num_parallel, num_samples):
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="letgo-hopper")
+@click.option("--local-dir", type=str, default="dropout-hopper")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
@@ -293,13 +302,13 @@ def hopper(local_dir, cpus, gpus, num_parallel, num_samples):
 
     # Final Version
 
-    from design_baselines.letgo import letgo
+    from design_baselines.dropout import dropout
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, include_dashboard=False, temp_dir=os.path.expanduser("~/tmp")
     )
     tune.run(
-        letgo,
+        dropout,
         config={
             "logging_dir": "data",
             "task": "HopperController-v0",
@@ -310,10 +319,10 @@ def hopper(local_dir, cpus, gpus, num_parallel, num_samples):
             "continuous_noise_std": 0.0,
             "val_size": 200,
             "batch_size": 128,
-            "updates": 10000,
+            "updates": 5000,
             "warmup": 5000,
             "update_freq": 50,
-            "score_freq": 1000,
+            "score_freq": 5000,
             "hidden_size": 256,
             "initial_max_std": 0.2,
             "initial_min_std": 0.1,
@@ -322,9 +331,9 @@ def hopper(local_dir, cpus, gpus, num_parallel, num_samples):
             "sol_x_optim": "adam",
             "sol_x_lr": 0.001,
             "noise_rate": 2.0,
-            "smoothing_coef": 1e3,
+            "smoothing_coef": 1000,
             "mc_evals": 1,
-            "ema_rate": 0.99,
+            "ema_rate": 0.999,
             "num_models": 1,
             },
         num_samples=num_samples,

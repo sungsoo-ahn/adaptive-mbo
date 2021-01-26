@@ -25,7 +25,6 @@ class Smoothing(tf.Module):
         is_discrete,
         continuous_noise_std,
         discrete_smoothing,
-        noise_rate,
     ):
         super().__init__()
         self.models = models
@@ -48,7 +47,6 @@ class Smoothing(tf.Module):
 
         self.noise_std = continuous_noise_std
         self.keep = discrete_smoothing
-        self.noise_rate = noise_rate
 
     def update_ema_models(self):
         for model, ema_model in zip(self.models, self.ema_models):
@@ -60,18 +58,15 @@ class Smoothing(tf.Module):
         # corrupt the inputs with noise
         if self.is_discrete:
             x0 = soft_noise(x0, self.keep)
-            x0 = cont_noise(x0, self.noise_std)
             x1 = tf.math.softmax(self.sol_x)
-            x10 = cont_noise(x1, self.noise_rate)
-            x11 = cont_noise(x1, self.noise_rate)
-            x1 = tf.concat([x10, x11], axis=0)
+            x1 = tf.concat([x1, x1], axis=0)
+
         else:
             x0 = cont_noise(x0, self.noise_std)
-            x10 = cont_noise(self.sol_x, self.noise_rate)
-            x11 = cont_noise(self.sol_x, self.noise_rate)
-            x1 = tf.concat([x10, x11], axis=0)
+            x1 = cont_noise(self.sol_x, self.noise_std)
+            x1 = tf.concat([x1, x1], axis=0)
 
-        avg_total_loss = 0.01
+        avg_total_loss = 0.0
         avg_nll_loss = 0.0
         avg_smoothing_loss = 0.0
         avg_rank_correlation = 0.0
@@ -161,13 +156,10 @@ class Smoothing(tf.Module):
             for mc_eval in range(self.mc_evals):
                 with tf.GradientTape() as tape:
                     tape.watch(self.sol_x)
-                    inp = self.sol_x
-                    if self.is_discrete:
-                        inp = tf.math.softmax(inp)
-                    if self.mc_evals > 1:
-                        inp = cont_noise(inp, self.noise_rate)
-
-                    d = ema_model.get_distribution(inp, training=True)
+                    inp = tf.math.softmax(self.sol_x) if self.is_discrete else self.sol_x
+                    d = ema_model.get_distribution(
+                        inp, training=(True if self.mc_evals > 1 else False)
+                        )
                     sol_x_loss = -d.mean()
 
                 sol_x_grad += (

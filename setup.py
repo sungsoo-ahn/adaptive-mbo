@@ -38,6 +38,7 @@ setup(
             "clip=design_baselines.clip.experiments:cli",
             "entmin=design_baselines.entmin.experiments:cli",
             "letgo=design_baselines.letgo.experiments:cli",
+            "dropout=design_baselines.dropout.experiments:cli",
         )
     },
 )
