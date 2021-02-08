@@ -1,8 +1,8 @@
 from design_baselines.data import StaticGraphTask
 from design_baselines.logger import Logger
 from design_baselines.utils import soft_noise, cont_noise
-from design_baselines.letgo.trainers import Smoothing
-from design_baselines.letgo.nets import ForwardModel
+from design_baselines.postreg.trainers import PosteriorRegularization
+from design_baselines.postreg.nets import ForwardModel
 from collections import defaultdict
 import tensorflow_probability as tfp
 import tensorflow as tf
@@ -15,7 +15,7 @@ from ray import tune
 from tensorboard.plugins.hparams import api as hp
 
 
-def letgo(config):
+def postreg(config):
     """Train a Score Function to solve a Model-Based Optimization
     using gradient ascent on the input design
 
@@ -82,7 +82,6 @@ def letgo(config):
         ForwardModel(
             input_shape=task.input_shape,
             hidden=config["hidden_size"],
-            noise_rate=config["noise_rate"],
         )
         for _ in range(config["num_models"])
     ]
@@ -91,7 +90,6 @@ def letgo(config):
         ForwardModel(
             input_shape=task.input_shape,
             hidden=config["hidden_size"],
-            noise_rate=config["noise_rate"],
         )
         for _ in range(config["num_models"])
     ]
@@ -108,26 +106,27 @@ def letgo(config):
     )
     sol_x = tf.Variable(sol_x)
 
-    trainer = Smoothing(
+    trainer = PosteriorRegularization(
         models=models,
         model_optim=tf.keras.optimizers.Adam,
         model_lr=config["model_lr"],
         ema_models=ema_models,
         ema_rate=config["ema_rate"],
         sol_x=sol_x,
-        sol_x_optim=config["sol_x_optim"],
+        sol_x_optim=tf.keras.optimizers.Adam,
         sol_x_lr=config["sol_x_lr"],
-        mc_evals=config["mc_evals"],
-        smoothing_coef=config["smoothing_coef"],
+        y_prior_mean=config["y_prior_mean"],
+        y_prior_std=config["y_prior_std"],
+        poterior_reg_coef=config["poterior_reg_coef"],
         is_discrete=config["is_discrete"],
         continuous_noise_std=config.get("continuous_noise_std", 0.0),
         discrete_smoothing=config.get("discrete_smoothing", 0.6),
-        noise_rate=config["noise_rate"],
     )
 
     update = 0
     step = 0
     epoch = 0
+
     while update < config["updates"]:
         epoch += 1
         train_statistics = defaultdict(list)

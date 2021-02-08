@@ -275,7 +275,7 @@ def ant(local_dir, cpus, gpus, num_parallel, num_samples):
             "num_models": 1,
         },
         num_samples=num_samples,
-        local_dir=local_dir_,
+        local_dir=local_dir,
         resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel - 0.01},
     )
     ray.shutdown()

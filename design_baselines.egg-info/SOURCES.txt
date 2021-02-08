@@ -55,6 +55,10 @@ design_baselines/energy/__init__.py
 design_baselines/energy/experiments.py
 design_baselines/energy/nets.py
 design_baselines/energy/trainers.py
+design_baselines/ensemble/__init__.py
+design_baselines/ensemble/experiments.py
+design_baselines/ensemble/nets.py
+design_baselines/ensemble/trainers.py
 design_baselines/entmin/__init__.py
 design_baselines/entmin/experiments.py
 design_baselines/entmin/nets.py
@@ -85,6 +89,10 @@ design_baselines/population/__init__.py
 design_baselines/population/experiments.py
 design_baselines/population/nets.py
 design_baselines/population/trainers.py
+design_baselines/postreg/__init__.py
+design_baselines/postreg/experiments.py
+design_baselines/postreg/nets.py
+design_baselines/postreg/trainers.py
 design_baselines/rebm/__init__.py
 design_baselines/rebm/experiments.py
 design_baselines/rebm/nets.py
