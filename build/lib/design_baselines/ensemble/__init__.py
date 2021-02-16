@@ -78,8 +78,7 @@ def ensemble(config):
 
     for model_id in range(config["ensemble_size"]):
         model = ForwardModel(input_shape=task.input_shape, hidden=config["hidden_size"])
-        model_optim = tfa.optimizers.AdamW(weight_decay=config["model_wd"], learning_rate=config["model_lr"])
-        #tf.keras.optimizers.Adam(learning_rate=config["model_lr"])
+        model_optim = tf.keras.optimizers.Adam(learning_rate=config["model_lr"])
         trainer = ModelTrainer(
             model=model,
             model_optim=model_optim,

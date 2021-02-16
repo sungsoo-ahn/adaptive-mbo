@@ -153,7 +153,6 @@ def superconductor(local_dir, cpus, gpus, num_parallel, num_samples):
             "val_size": 200,
             "batch_size": 128,
             "epochs": 200,
-            "model_wd": tune.grid_search([0.02, 0.05]),
             "model_lr": 0.001,
             "ensemble_size": 1,
             "hidden_size": 256,

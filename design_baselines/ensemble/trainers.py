@@ -43,7 +43,8 @@ class ModelTrainer(tf.Module):
         statistics["loss/total"] = loss_total
         statistics["loss/nll"] = loss_nll
         statistics["rank_corr"] = rank_corr
-
+        statistics["mean"] = tf.reduce_mean(d.mean())
+        statistics["stddev"] = tf.reduce_mean(d.stddev())
         return statistics
 
     @tf.function(experimental_relax_shapes=True)
@@ -106,5 +107,7 @@ class SolutionTrainer(tf.Module):
 
         statistics = dict()
         statistics["loss"] = tf.reduce_mean(loss)
+        statistics["mean"] = tf.reduce_mean(d.mean())
+        statistics["stddev"] = tf.reduce_mean(d.stddev())
         statistics["travelled"] = travelled
         return statistics

@@ -116,6 +116,13 @@ def cont_noise(x, noise_std=1.0):
 
     return x + noise_std * tf.random.normal(tf.shape(x))
 
+def perturb(x, is_discrete, discrete_smoothing, continuous_noise_std):
+    if is_discrete:
+        x = soft_noise(x, discrete_smoothing)
+    else:
+        x = cont_noise(x, continuous_noise_std)
+
+    return x
 
 def generate_ensemble(num_layers, *activations):
     """Given a set of string names and a number of target layers, generate

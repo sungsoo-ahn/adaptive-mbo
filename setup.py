@@ -13,7 +13,11 @@ setup(
     entry_points={
         "console_scripts": (
             "design-baselines=design_baselines.cli:cli",
+            "csty=design_baselines.csty.experiments:cli",
             "ensemble=design_baselines.ensemble.experiments:cli",
+            "energy=design_baselines.energy.experiments:cli",
+            "distil=design_baselines.distil.experiments:cli",
+            "pess=design_baselines.pess.experiments:cli",
         )
     },
 )
