@@ -1,8 +1,0 @@
-[console_scripts]
-csty = design_baselines.csty.experiments:cli
-design-baselines = design_baselines.cli:cli
-distil = design_baselines.distil.experiments:cli
-energy = design_baselines.energy.experiments:cli
-ensemble = design_baselines.ensemble.experiments:cli
-pess = design_baselines.pess.experiments:cli
-
