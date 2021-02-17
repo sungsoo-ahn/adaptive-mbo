@@ -2,8 +2,8 @@ from design_baselines.data import StaticGraphTask
 from design_baselines.logger import Logger
 from design_baselines.utils import spearman
 from design_baselines.utils import soft_noise, cont_noise
-from design_baselines.pess.trainers import Trainer
-from design_baselines.pess.nets import ForwardModel
+from design_baselines.advsmooth.trainers import Trainer
+from design_baselines.advsmooth.nets import ForwardModel
 from collections import defaultdict
 import tensorflow as tf
 import numpy as np
@@ -38,7 +38,7 @@ def normalize_dataset(x, y, normalize_xs, normalize_ys):
     return (x, mu_x, st_x), (y, mu_y, st_y)
 
 
-def pess(config):
+def advsmooth(config):
     # create the training task and logger
     logger = Logger(config["logging_dir"])
     task = StaticGraphTask(config["task"], **config["task_kwargs"])
@@ -82,9 +82,8 @@ def pess(config):
         is_discrete=config["is_discrete"],
         sol_x=sol_x,
         sol_x_opt=sol_x_opt,
-        coef_pessimism=config["coef_pessimism"],
         coef_smoothing=config["coef_smoothing"],
-        coef_stddev=config["coef_stddev"],
+        adv_rate=config["adv_rate"],
         ema_rate=config["ema_rate"],
         )
 

@@ -2,8 +2,8 @@ from design_baselines.data import StaticGraphTask
 from design_baselines.logger import Logger
 from design_baselines.utils import spearman
 from design_baselines.utils import soft_noise, cont_noise
-from design_baselines.pess.trainers import Trainer
-from design_baselines.pess.nets import ForwardModel
+from design_baselines.randsm.trainers import Trainer
+from design_baselines.randsm.nets import ForwardModel
 from collections import defaultdict
 import tensorflow as tf
 import numpy as np
@@ -38,8 +38,7 @@ def normalize_dataset(x, y, normalize_xs, normalize_ys):
     return (x, mu_x, st_x), (y, mu_y, st_y)
 
 
-def pess(config):
-    # create the training task and logger
+def randsm(config):
     logger = Logger(config["logging_dir"])
     task = StaticGraphTask(config["task"], **config["task_kwargs"])
     if config["is_discrete"]:
@@ -60,6 +59,7 @@ def pess(config):
 
     indices = tf.math.top_k(task_y[:, 0], k=config["sol_x_samples"])[1]
     sol_x =  tf.gather(task_x, indices, axis=0)
+    sol_y = tf.gather(task_y, indices, axis=0)
     sol_x_opt = tf.keras.optimizers.Adam(learning_rate=config["sol_x_lr"])
 
     perturb_fn = lambda x: cont_noise(x, noise_std=config["continuous_noise_std"])
@@ -67,25 +67,16 @@ def pess(config):
         input_shape=task.input_shape,
         hidden=config["hidden_size"],
     )
-    ema_model = ForwardModel(
-        input_shape=task.input_shape,
-        hidden=config["hidden_size"],
-    )
-    ema_model.set_weights(model.get_weights())
-
     model_opt = tf.keras.optimizers.Adam(learning_rate=config["model_lr"])
     trainer = Trainer(
         model=model,
         model_opt=model_opt,
-        ema_model=ema_model,
         perturb_fn=perturb_fn,
         is_discrete=config["is_discrete"],
         sol_x=sol_x,
+        sol_y=sol_y,
         sol_x_opt=sol_x_opt,
-        coef_pessimism=config["coef_pessimism"],
-        coef_smoothing=config["coef_smoothing"],
-        coef_stddev=config["coef_stddev"],
-        ema_rate=config["ema_rate"],
+        coef_sol=config["coef_sol"],
         )
 
     ### Warmup
@@ -126,8 +117,8 @@ def pess(config):
         for name, tsr in statistics.items():
             logger.record(f"update/{name}", tsr, update)
 
-        sol_x = trainer.get_sol_x()
         if (update + 1) % config["score_freq"] == 0:
+            sol_x = trainer.get_sol_x()
             inp = tf.math.softmax(sol_x) if config["is_discrete"] else sol_x
             score = task.score(inp * st_x + mu_x)
             logger.record(f"update/score", score, update, percentile=True)

@@ -14,9 +14,8 @@ class Trainer(tf.Module):
         is_discrete,
         sol_x,
         sol_x_opt,
-        coef_pessimism,
         coef_smoothing,
-        coef_stddev,
+        adv_rate,
         ema_rate,
     ):
 
@@ -29,70 +28,40 @@ class Trainer(tf.Module):
         self.init_sol_x = sol_x
         self.sol_x = tf.Variable(sol_x)
         self.sol_x_opt = sol_x_opt
-        self.coef_pessimism = coef_pessimism
         self.coef_smoothing = coef_smoothing
-        self.coef_stddev = coef_stddev
+        self.adv_rate = adv_rate
         self.ema_rate = ema_rate
 
     def get_sol_x(self):
         return self.sol_x.read_value()
 
     @tf.function(experimental_relax_shapes=True)
-    def warmup_step(self, x, y):
-        if self.is_discrete:
-            x = tf.math.softmax(x)
-
-        x = self.perturb_fn(x)
-
+    def adv_perturb_fn(self, x):
         with tf.GradientTape(persistent=True) as tape:
+            tape.watch(x)
             d = self.model.get_distribution(x, training=True)
-            loss_nll = -tf.reduce_mean(d.log_prob(y))
-            rank_correlation = spearman(y[:, 0], d.mean()[:, 0])
-            loss_total = loss_nll
+            loss = -d.mean()
 
-        # take gradient steps on the model
-        grads = tape.gradient(loss_total, self.model.trainable_variables)
-        self.model_opt.apply_gradients(zip(grads, self.model.trainable_variables))
-
-        statistics = dict()
-        statistics["loss/nll"] = loss_nll
-        statistics["loss/total"] = loss_total
-        statistics["mean"] = tf.reduce_mean(d.mean())
-        statistics["stddev"] = tf.reduce_mean(d.stddev())
-        statistics["rank_corr"] = rank_correlation
-
-        return statistics
+        x_grad = tape.gradient(loss, x)
+        x = x - self.adv_rate * x_grad
+        return x
 
     @tf.function(experimental_relax_shapes=True)
     def train_step(self, x, y):
-        if self.is_discrete:
-            x = tf.math.softmax(x)
-            sol_x = tf.math.softmax(self.sol_x)
-        else:
-            sol_x = self.sol_x
-
         pert_x = self.perturb_fn(x)
-        pert_sol_x0 = self.perturb_fn(sol_x)
-        pert_sol_x1 = self.perturb_fn(sol_x)
+        pert_sol_x = self.adv_perturb_fn(self.sol_x)
 
         with tf.GradientTape(persistent=True) as tape:
             d = self.model.get_distribution(pert_x, training=True)
             loss_nll = -d.log_prob(y)
             rank_correlation = spearman(y[:, 0], d.mean()[:, 0])
 
-            inp = tf.concat([pert_sol_x0, pert_sol_x1], axis=0)
+            inp = tf.concat([self.sol_x, pert_sol_x], axis=0)
             params = self.model.get_params(inp, training=True)
-            pert_sol_loc0, pert_sol_loc1 = tf.split(params["loc"], 2, axis=0)
-            pert_sol_scale0, pert_sol_scale1 = tf.split(params["scale"], 2, axis=0)
-
-            loss_pessimism = 0.5 * (pert_sol_loc0 + pert_sol_loc1)
-            loss_mean_smoothing = tf.square(pert_sol_loc0 - pert_sol_loc1)
-            loss_stddev_smoothing = tf.square(pert_sol_scale0 ** 2 - pert_sol_scale1 ** 2)
+            sol_loc, pert_sol_loc = tf.split(params["loc"], 2, axis=0)
+            loss_smoothing = pert_sol_loc - sol_loc
             loss_total = (
-                tf.reduce_mean(loss_nll)
-                + self.coef_pessimism * tf.reduce_mean(loss_pessimism)
-                + self.coef_smoothing * tf.reduce_mean(loss_mean_smoothing)
-                + self.coef_smoothing * tf.reduce_mean(loss_stddev_smoothing)
+                tf.reduce_mean(loss_nll) + self.coef_smoothing * tf.reduce_mean(loss_smoothing)
             )
 
         # take gradient steps on the model
@@ -105,12 +74,11 @@ class Trainer(tf.Module):
 
         statistics = dict()
         statistics["loss/nll"] = loss_nll
-        statistics["loss/pessimism"] = loss_pessimism
-        statistics["loss/mean_smoothing"] = loss_mean_smoothing
-        statistics["loss/stddev_smoothing"] = loss_stddev_smoothing
+        statistics["loss/smoothing"] = loss_smoothing
         statistics["loss/total"] = loss_total
         statistics["mean"] = tf.reduce_mean(d.mean())
-        statistics["stddev"] = tf.reduce_mean(d.stddev())
+        statistics["sol_mean"] = tf.reduce_mean(sol_loc)
+        statistics["pert_sol_mean"] = tf.reduce_mean(pert_sol_loc)
         statistics["rank_corr"] = rank_correlation
 
         return statistics
@@ -143,7 +111,7 @@ class Trainer(tf.Module):
                 sol_x = tf.math.softmax(sol_x)
 
             d = self.ema_model.get_distribution(sol_x, training=False)
-            loss = -(d.mean() - self.coef_stddev * tf.math.log(d.stddev()))
+            loss = -d.mean()
 
         sol_x_grad = tape.gradient(loss, self.sol_x)
         sol_x_grad = tf.clip_by_norm(sol_x_grad, 1.0)
@@ -156,7 +124,7 @@ class Trainer(tf.Module):
         statistics = dict()
         statistics["loss"] = tf.reduce_mean(loss)
         statistics["mean"] = tf.reduce_mean(d.mean())
-        statistics["log_stddev"] = tf.reduce_mean(tf.math.log(d.stddev()))
+        statistics["stddev"] = tf.reduce_mean(d.stddev())
         statistics["travelled"] = travelled
 
         return statistics
