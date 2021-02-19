@@ -7,25 +7,25 @@ from random import randint
 
 @click.group()
 def cli():
-    """A group of experiments for training Conservative Score Models
+    """A group of experiments for training Conservative Score Modelocalsearch
     and reproducing our ICLR 2021 results.
     """
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="randsm-gfp")
+@click.option("--local-dir", type=str, default="localsearch-gfp")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
 @click.option("--num-samples", type=int, default=1)
 def gfp(local_dir, cpus, gpus, num_parallel, num_samples):
-    from design_baselines.randsm import randsm
+    from design_baselines.localsearch import localsearch
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, temp_dir=os.path.expanduser(f"~/tmp_{randint(0, 1000000)}"),
     )
     tune.run(
-        randsm,
+        localsearch,
         config={
             "logging_dir": "data",
             "task": "GFP-v0",
@@ -44,7 +44,7 @@ def gfp(local_dir, cpus, gpus, num_parallel, num_samples):
             "model_lr": 0.001,
             "sol_x_samples": 128,
             "sol_x_lr": 0.01,
-            "coef_randsmimism": 0.0,
+            "coef_pessimism": 0.0,
             "coef_smoothing": 1e1,
             "coef_stddev": 5.0,
             "score_freq": 100,
@@ -52,24 +52,24 @@ def gfp(local_dir, cpus, gpus, num_parallel, num_samples):
         },
         num_samples=num_samples,
         local_dir=local_dir,
-        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel - 0.01},
+        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel},
     )
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="randsm-molecule")
+@click.option("--local-dir", type=str, default="localsearch-molecule")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
 @click.option("--num-samples", type=int, default=1)
 def molecule(local_dir, cpus, gpus, num_parallel, num_samples):
-    from design_baselines.randsm import randsm
+    from design_baselines.localsearch import localsearch
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, temp_dir=os.path.expanduser(f"~/tmp_{randint(0, 1000000)}"),
     )
     tune.run(
-        randsm,
+        localsearch,
         config={
             "logging_dir": "data",
             "task": "MoleculeActivity-v0",
@@ -88,31 +88,31 @@ def molecule(local_dir, cpus, gpus, num_parallel, num_samples):
             "model_lr": 0.001,
             "sol_x_samples": 128,
             "sol_x_lr": 0.1,
-            "coef_randsmimism": 1e-3,
+            "coef_pessimism": 1e-3,
             "coef_smoothing": 1e2,
             "score_freq": 1000,
             "ema_rate": 0.999,
         },
         num_samples=num_samples,
         local_dir=local_dir,
-        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel - 0.01},
+        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel},
     )
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="randsm-superconductor")
+@click.option("--local-dir", type=str, default="localsearch-superconductor")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
 @click.option("--num-samples", type=int, default=1)
 def superconductor(local_dir, cpus, gpus, num_parallel, num_samples):
-    from design_baselines.randsm import randsm
+    from design_baselines.localsearch import localsearch
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, temp_dir=os.path.expanduser(f"~/tmp_{randint(0, 1000000)}"),
     )
     tune.run(
-        randsm,
+        localsearch,
         config={
             "logging_dir": "data",
             "task": "Superconductor-v0",
@@ -120,39 +120,42 @@ def superconductor(local_dir, cpus, gpus, num_parallel, num_samples):
             "is_discrete": False,
             "normalize_ys": True,
             "normalize_xs": True,
-            "continuous_noise_std": tune.grid_search([0.5, 1.0, 2.0, 5.0]),
+            "continuous_noise_std": 0.2,
             "val_size": 500,
             "batch_size": 128,
             "updates": 1000,
-            "epochs": 100,
+            "warmup_epochs": 100,
+            "steps_per_update": 100,
             "hidden_size": 256,
             "model_lr": 0.001,
             "sol_x_samples": 128,
-            "sol_x_lr": 0.1,
+            "adv_eps": tune.grid_search([2e0, 5e-1]),
+            "adv_steps": 40,
+            "adv_norm": 2,
+            "coef_pess": tune.grid_search([1e-1, 1e0]),
+            "ema_rate": tune.grid_search([0.0, 0.999]),
             "score_freq": 100,
-            "num_evals": 2048,
-            "coef_stddev": 1.0,
         },
         num_samples=num_samples,
         local_dir=local_dir,
-        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel - 0.01},
+        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel},
     )
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="randsm-dkitty")
+@click.option("--local-dir", type=str, default="localsearch-dkitty")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
 @click.option("--num-samples", type=int, default=1)
 def dkitty(local_dir, cpus, gpus, num_parallel, num_samples):
-    from design_baselines.randsm import randsm
+    from design_baselines.localsearch import localsearch
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, temp_dir=os.path.expanduser(f"~/tmp_{randint(0, 1000000)}"),
     )
     tune.run(
-        randsm,
+        localsearch,
         config={
             "logging_dir": "data",
             "task": "DKittyMorphology-v0",
@@ -160,43 +163,42 @@ def dkitty(local_dir, cpus, gpus, num_parallel, num_samples):
             "is_discrete": False,
             "normalize_ys": True,
             "normalize_xs": True,
-            "continuous_noise_std": 0.0,
+            "continuous_noise_std": 2.0,
             "val_size": 500,
             "batch_size": 128,
-            "pretrain_epochs": 200,
-            "epochs": 100,
-            "log_freq": 0,
-            "hidden_size": 8192,
+            "updates": 2000,
+            "warmup_epochs": 100,
+            "steps_per_update": 100,
+            "hidden_size": 256,
             "model_lr": 0.001,
-            "buffer_size": 4096,
-            "buffer_update_size": 512,
-            "buffer_update_freq": 1000,
-            "sgld_lr": 1e-2,
-            "sgld_noise_penalty": 0.001,
-            "pcd_steps": 10,
-            "warmup_steps": 20000,
-            "reg_coef": 1e-3,
+            "sol_x_samples": 128,
+            "sol_x_lr": 0.001,
+            "coef_pessimism": 0.0,
+            "coef_smoothing": 1e2,
+            "coef_stddev": tune.grid_search([1.0, 2.0, 5.0, 10.0]),
+            "score_freq": 1000,
+            "ema_rate": 0.999,
         },
         num_samples=num_samples,
         local_dir=local_dir,
-        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel - 0.01},
+        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel},
     )
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="randsm-ant")
+@click.option("--local-dir", type=str, default="localsearch-ant")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
 @click.option("--num-samples", type=int, default=1)
 def ant(local_dir, cpus, gpus, num_parallel, num_samples):
-    from design_baselines.randsm import randsm
+    from design_baselines.localsearch import localsearch
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, temp_dir=os.path.expanduser(f"~/tmp_{randint(0, 1000000)}"),
     )
     tune.run(
-        randsm,
+        localsearch,
         config={
             "logging_dir": "data",
             "task": "AntMorphology-v0",
@@ -204,43 +206,42 @@ def ant(local_dir, cpus, gpus, num_parallel, num_samples):
             "is_discrete": False,
             "normalize_ys": True,
             "normalize_xs": True,
-            "continuous_noise_std": 0.0,
+            "continuous_noise_std": 2.0,
             "val_size": 500,
             "batch_size": 128,
-            "pretrain_epochs": 200,
-            "epochs": 100,
-            "log_freq": 0,
-            "hidden_size": 8192,
+            "updates": 2000,
+            "warmup_epochs": 100,
+            "steps_per_update": 100,
+            "hidden_size": 256,
             "model_lr": 0.001,
-            "buffer_size": 4096,
-            "buffer_update_size": 512,
-            "buffer_update_freq": 1000,
-            "sgld_lr": 1e-2,
-            "sgld_noise_penalty": 0.001,
-            "pcd_steps": 10,
-            "warmup_steps": 20000,
-            "reg_coef": 1e-3,
+            "sol_x_samples": 128,
+            "sol_x_lr": 0.001,
+            "coef_pessimism": 0.0,
+            "coef_smoothing": 1e2,
+            "coef_stddev": tune.grid_search([1.0, 2.0, 5.0, 10.0]),
+            "score_freq": 1000,
+            "ema_rate": 0.999,
         },
         num_samples=num_samples,
         local_dir=local_dir,
-        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel - 0.01},
+        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel},
     )
 
 
 @cli.command()
-@click.option("--local-dir", type=str, default="randsm-hopper")
+@click.option("--local-dir", type=str, default="localsearch-hopper")
 @click.option("--cpus", type=int, default=24)
 @click.option("--gpus", type=int, default=1)
 @click.option("--num-parallel", type=int, default=1)
 @click.option("--num-samples", type=int, default=1)
 def hopper(local_dir, cpus, gpus, num_parallel, num_samples):
-    from design_baselines.randsm import randsm
+    from design_baselines.localsearch import localsearch
 
     ray.init(
         num_cpus=cpus, num_gpus=gpus, temp_dir=os.path.expanduser(f"~/tmp_{randint(0, 1000000)}"),
     )
     tune.run(
-        randsm,
+        localsearch,
         config={
             "logging_dir": "data",
             "task": "HopperController-v0",
@@ -248,25 +249,25 @@ def hopper(local_dir, cpus, gpus, num_parallel, num_samples):
             "is_discrete": False,
             "normalize_ys": True,
             "normalize_xs": True,
-            "continuous_noise_std": 0.0,
-            "val_size": 200,
+            "continuous_noise_std": 0.2,
+            "val_size": 500,
             "batch_size": 128,
-            "pretrain_epochs": 200,
-            "epochs": 100,
-            "log_freq": 0,
-            "hidden_size": 8192,
+            "updates": 5000,
+            "warmup_epochs": 100,
+            "steps_per_update": 100,
+            "hidden_size": 256,
             "model_lr": 0.001,
-            "buffer_size": 4096,
-            "buffer_update_size": 512,
-            "buffer_update_freq": 1000,
-            "sgld_lr": 1e-2,
-            "sgld_noise_penalty": 0.001,
-            "pcd_steps": 10,
-            "warmup_steps": 20000,
-            "reg_coef": 1e-3,
+            "sol_x_samples": 128,
+            "sol_x_lr": 0.001,
+            "coef_pessimism": tune.grid_search([0.0, 1e-2, 1e-3, 1e-4]),
+            "coef_smoothing": 1e2,
+            "coef_stddev": 0.0,
+            "mc_evalocalsearch": 128,
+            "score_freq": 100,
+            "ema_rate": 0.999,
         },
         num_samples=num_samples,
         local_dir=local_dir,
-        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel - 0.01},
+        resources_per_trial={"cpu": cpus // num_parallel, "gpu": gpus / num_parallel},
     )
 

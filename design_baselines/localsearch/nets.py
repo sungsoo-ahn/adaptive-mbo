@@ -7,7 +7,7 @@ from tensorflow_addons.layers import SpectralNormalization
 
 class ForwardModel(tf.keras.Sequential):
     distribution = tfpd.Normal
-    def __init__(self, input_shape, hidden, smoothing_rate):
+    def __init__(self, input_shape, hidden):
         self.input_shape_ = input_shape
         self.hidden = hidden
 
@@ -20,11 +20,8 @@ class ForwardModel(tf.keras.Sequential):
 
         layers = [
             tfkl.Flatten(input_shape=input_shape),
-            tfkl.GaussianNoise(stddev=smoothing_rate),
-            tfkl.Dense(hidden),
-            tfkl.LeakyReLU(),
-            tfkl.Dense(hidden),
-            tfkl.LeakyReLU(),
+            tfkl.Dense(hidden, activation=tfkl.LeakyReLU()),
+            tfkl.Dense(hidden, activation=tfkl.LeakyReLU()),
             tfkl.Dense(2),
         ]
 

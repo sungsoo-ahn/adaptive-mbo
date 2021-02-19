@@ -2,7 +2,7 @@ from design_baselines.data import StaticGraphTask
 from design_baselines.logger import Logger
 from design_baselines.utils import spearman
 from design_baselines.utils import soft_noise, cont_noise
-from design_baselines.distil.trainers import PessimisticTrainer, MainTrainer
+from design_baselines.distil.trainers import Trainer
 from design_baselines.distil.nets import ForwardModel
 from collections import defaultdict
 import tensorflow as tf
@@ -59,103 +59,96 @@ def distil(config):
     )
 
     indices = tf.math.top_k(task_y[:, 0], k=config["sol_x_samples"])[1]
-    sol_x =  tf.gather(task_x, indices, axis=0)
+    init_sol_x =  tf.gather(task_x, indices, axis=0)
     sol_x_opt = tf.keras.optimizers.Adam(learning_rate=config["sol_x_lr"])
 
-    perturb_fn = lambda x: cont_noise(x, noise_std=config["continuous_noise_std"])
-    main_model = ForwardModel(
+    pess_model = ForwardModel(
         input_shape=task.input_shape,
         hidden=config["hidden_size"],
-        is_discrete=config["is_discrete"],
+        smoothing_rate=config["smoothing_rate"],
     )
-    main_model_opt = tf.keras.optimizers.Adam(learning_rate=config["model_lr"])
-    main_trainer = MainTrainer(
-        model=main_model,
-        model_opt=main_model_opt,
-        perturb_fn=perturb_fn,
-        sol_x=sol_x,
+    pess_model_opt = tf.keras.optimizers.Adam(learning_rate=config["model_lr"])
+    distil_model = ForwardModel(
+        input_shape=task.input_shape,
+        hidden=config["hidden_size"],
+        smoothing_rate=0.0, #config["smoothing_rate"],
+    )
+    distil_model_opt = tf.keras.optimizers.Adam(learning_rate=config["model_lr"])
+
+    trainer = Trainer(
+        pess_model=pess_model,
+        pess_model_opt=pess_model_opt,
+        distil_model=distil_model,
+        distil_model_opt=distil_model_opt,
+        init_sol_x=init_sol_x,
         sol_x_opt=sol_x_opt,
+        coef_pessimism=config["coef_pessimism"],
+        mc_evals=config["mc_evals"],
         )
 
-    pessimistic_model = ForwardModel(
-        input_shape=task.input_shape,
-        hidden=config["hidden_size"],
-        is_discrete=config["is_discrete"],
-    )
-    pessimistic_model_opt = tf.keras.optimizers.Adam(learning_rate=config["model_lr"])
-    pessimistic_trainer = PessimisticTrainer(
-        model=pessimistic_model,
-        model_opt=pessimistic_model_opt,
-        perturb_fn=perturb_fn,
-        sol_x=sol_x,
-        coef_pessimism=config["coef_pessimism"],
-        ema_rate=config["ema_rate"],
-    )
-
     ### Warmup
-    task_train_data, task_validate_data = task.build(
+    train_data, validate_data = task.build(
         x=task_x, y=task_y, batch_size=config["batch_size"], val_size=config["val_size"]
     )
 
     for epoch in range(config["warmup_epochs"]):
         statistics = defaultdict(list)
-        for x, y in task_train_data:
-            for name, tsr in main_trainer.train_step(x, y).items():
+        for x, y in train_data:
+            for name, tsr in trainer.train_pess_step(x, y).items():
                 statistics[f"warmup/train/{name}"].append(tsr)
-
-        for x, y in task_validate_data:
-            for name, tsr in main_trainer.validate_step(x, y).items():
-                statistics[f"warmup/validate/{name}"].append(tsr)
 
         for name, tsrs in statistics.items():
             logger.record(name, tf.reduce_mean(tf.concat(tsrs, axis=0)), epoch)
 
-    warmup_weights = main_model.get_weights()
-    pessimistic_model.set_weights(warmup_weights)
+    distil_model.set_weights(pess_model.get_weights())
 
-    ### Main training
-    total_x = task_x
-    total_y = task_y
-    pessimistic_epoch = 0
-    main_epoch = 0
+    distil_x = task_x
+    distil_y = task_y
+    pess_epoch = 0
+    distil_epoch = 0
     for update in range(config["updates"]):
-        pessimistic_trainer.assign_sol_x(sol_x)
-        pessimistic_trainer.init_sol_y()
-        for _ in range(config["pessimistic_epochs_per_update"]):
-            pessimistic_epoch += 1
-            statistics = defaultdict(list)
-            for x, y in task_train_data:
-                for name, tsr in pessimistic_trainer.train_step(x, y).items():
-                    statistics[f"pessimistic/{name}"].append(tsr)
-
-            for name, tsrs in statistics.items():
-                logger.record(name, tf.reduce_mean(tf.concat(tsrs, axis=0)), pessimistic_epoch)
-
-        sol_y = pessimistic_trainer.get_sol_y()
-        logger.record(f"update/sol_y", sol_y, update, percentile=True)
-
-        total_x = tf.concat([total_x, sol_x], axis=0).numpy()
-        total_y = tf.concat([total_y, sol_y], axis=0).numpy()
-        total_x = total_x[:1024]
-        total_y = total_y[:1024]
-        main_data, _ = task.build(x=total_x, y=total_y, batch_size=config["batch_size"], val_size=0)
-
-        for epoch in range(config["main_epochs_per_update"]):
-            main_epoch += 1
-            statistics = defaultdict(list)
-            for x, y in main_data:
-                for name, tsr in main_trainer.train_step(x, y).items():
-                    statistics[f"main/{name}"].append(tsr)
-
-            for name, tsrs in statistics.items():
-                logger.record(name, tf.reduce_mean(tf.concat(tsrs, axis=0)), main_epoch)
-
-        statistics = main_trainer.update_step()
+        # Update
+        statistics = trainer.update_step()
         for name, tsr in statistics.items():
-            logger.record(f"update/{name}", tsr, update+1)
+            logger.record(f"update/{name}", tsr, update)
 
-        sol_x = main_trainer.get_sol_x()
         if (update + 1) % config["score_freq"] == 0:
             inp = tf.math.softmax(sol_x) if config["is_discrete"] else sol_x
             score = task.score(inp * st_x + mu_x)
             logger.record(f"update/score", score, update+1, percentile=True)
+
+        # Train Pess
+        for _ in range(config["pess_epochs_per_update"]):
+            pess_epoch += 1
+            statistics = defaultdict(list)
+            for x, y in train_data:
+                for name, tsr in trainer.train_pess_step(x, y).items():
+                    statistics[f"pess/{name}"].append(tsr)
+
+            for name, tsrs in statistics.items():
+                logger.record(name, tf.reduce_mean(tf.concat(tsrs, axis=0)), pess_epoch)
+
+        # Prepare Distil data
+        statistics = trainer.inference_step()
+        for name, tsr in statistics.items():
+            logger.record(f"inference/{name}", tsr, update)
+
+        sol_x = trainer.sol_x.read_value().numpy()
+        sol_y = trainer.sol_y.read_value().numpy()
+        distil_x = np.concatenate([sol_x, distil_x], axis=0)[:config["buffer_size"]]
+        distil_y = np.concatenate([sol_y, distil_y], axis=0)[:config["buffer_size"]]
+        distil_data, _ = task.build(
+            x=distil_x, y=distil_y, batch_size=config["batch_size"], val_size=0
+            )
+
+        #Train Distil
+        for epoch in range(config["distil_epochs_per_update"]):
+            distil_epoch += 1
+            statistics = defaultdict(list)
+            for x, y in distil_data:
+                for name, tsr in trainer.train_distil_step(x, y).items():
+                    statistics[f"distil/{name}"].append(tsr)
+
+            for name, tsrs in statistics.items():
+                logger.record(name, tf.reduce_mean(tf.concat(tsrs, axis=0)), distil_epoch)
+

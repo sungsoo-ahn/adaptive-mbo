@@ -18,7 +18,7 @@ setup(
             "energy=design_baselines.energy.experiments:cli",
             "distil=design_baselines.distil.experiments:cli",
             "pess=design_baselines.pess.experiments:cli",
-            "advsmooth=design_baselines.advsmooth.experiments:cli",
+            "localsearch=design_baselines.localsearch.experiments:cli",
         )
     },
 )

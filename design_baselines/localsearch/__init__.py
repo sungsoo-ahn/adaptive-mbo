@@ -2,8 +2,8 @@ from design_baselines.data import StaticGraphTask
 from design_baselines.logger import Logger
 from design_baselines.utils import spearman
 from design_baselines.utils import soft_noise, cont_noise
-from design_baselines.randsm.trainers import Trainer
-from design_baselines.randsm.nets import ForwardModel
+from design_baselines.localsearch.trainers import Trainer
+from design_baselines.localsearch.nets import ForwardModel
 from collections import defaultdict
 import tensorflow as tf
 import numpy as np
@@ -38,7 +38,8 @@ def normalize_dataset(x, y, normalize_xs, normalize_ys):
     return (x, mu_x, st_x), (y, mu_y, st_y)
 
 
-def randsm(config):
+def localsearch(config):
+    # create the training task and logger
     logger = Logger(config["logging_dir"])
     task = StaticGraphTask(config["task"], **config["task_kwargs"])
     if config["is_discrete"]:
@@ -59,27 +60,31 @@ def randsm(config):
 
     indices = tf.math.top_k(task_y[:, 0], k=config["sol_x_samples"])[1]
     sol_x =  tf.gather(task_x, indices, axis=0)
-    sol_x_list = tf.split(sol_x, config["sol_x_samples"], axis=0)
-    sol_x_opt_list = [
-        tf.keras.optimizers.Adam(learning_rate=config["sol_x_lr"])
-        for _ in range(config["sol_x_samples"])
-    ]
 
     perturb_fn = lambda x: cont_noise(x, noise_std=config["continuous_noise_std"])
     model = ForwardModel(
         input_shape=task.input_shape,
         hidden=config["hidden_size"],
     )
+    ema_model = ForwardModel(
+        input_shape=task.input_shape,
+        hidden=config["hidden_size"],
+    )
+    ema_model.set_weights(model.get_weights())
+
     model_opt = tf.keras.optimizers.Adam(learning_rate=config["model_lr"])
     trainer = Trainer(
         model=model,
         model_opt=model_opt,
+        ema_model=ema_model,
+        adv_eps=config["adv_eps"],
+        adv_steps=config["adv_steps"],
+        adv_norm=config["adv_norm"],
         perturb_fn=perturb_fn,
         is_discrete=config["is_discrete"],
-        sol_x_list=sol_x_list,
-        sol_x_opt_list=sol_x_opt_list,
-        num_evals=config["num_evals"],
-        coef_stddev=config["coef_stddev"],
+        sol_x=sol_x,
+        coef_pess=config["coef_pess"],
+        ema_rate=config["ema_rate"],
         )
 
     ### Warmup
@@ -87,27 +92,40 @@ def randsm(config):
         x=task_x, y=task_y, batch_size=config["batch_size"], val_size=config["val_size"]
     )
 
-    for epoch in range(config["epochs"]):
+    for epoch in range(config["warmup_epochs"]):
         statistics = defaultdict(list)
         for x, y in train_data:
             for name, tsr in trainer.train_step(x, y).items():
-                statistics[f"train/{name}"].append(tsr)
+                statistics[f"warmup/train/{name}"].append(tsr)
 
         for x, y in validate_data:
             for name, tsr in trainer.validate_step(x, y).items():
-                statistics[f"validate/{name}"].append(tsr)
+                statistics[f"warmup/validate/{name}"].append(tsr)
 
         for name, tsrs in statistics.items():
             logger.record(name, tf.reduce_mean(tf.concat(tsrs, axis=0)), epoch)
 
     ### Main training
+    step = 0
     for update in range(config["updates"]):
+        statistics = defaultdict(list)
+        break_step = step + config["steps_per_update"]
+        while step < break_step:
+            for x, y in train_data:
+                statistics = trainer.train_step(x, y)
+                for name, tsr in statistics.items():
+                    logger.record(f"train/{name}", tsr, step)
+
+                step += 1
+                if step == break_step:
+                    break
+
         statistics = trainer.update_step()
         for name, tsr in statistics.items():
             logger.record(f"update/{name}", tsr, update)
 
+        sol_x = trainer.get_sol_x()
         if (update + 1) % config["score_freq"] == 0:
-            sol_x = trainer.get_sol_x()
             inp = tf.math.softmax(sol_x) if config["is_discrete"] else sol_x
             score = task.score(inp * st_x + mu_x)
             logger.record(f"update/score", score, update, percentile=True)

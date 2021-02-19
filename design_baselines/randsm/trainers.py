@@ -11,9 +11,10 @@ class Trainer(tf.Module):
         model_opt,
         perturb_fn,
         is_discrete,
-        sol_x,
-        sol_x_opt,
-        coef_sol,
+        sol_x_list,
+        sol_x_opt_list,
+        num_evals,
+        coef_stddev,
     ):
 
         super().__init__()
@@ -21,16 +22,13 @@ class Trainer(tf.Module):
         self.model_opt = model_opt
         self.perturb_fn = perturb_fn
         self.is_discrete = is_discrete
-        self.init_sol_x = sol_x
-        self.sol_x = tf.Variable(sol_x)
-        self.sol_y = sol_y
-        self.sol_x_opt = sol_x_opt
-        self.coef_sol = coef_sol
-
+        self.sol_x_list = [tf.Variable(sol_x) for sol_x in sol_x_list]
+        self.sol_x_opt_list = sol_x_opt_list
+        self.coef_stddev = coef_stddev
         self.num_evals = num_evals
 
     def get_sol_x(self):
-        return self.sol_x.read_value()
+        return tf.concat(self.sol_x_list, axis=0)
 
     @tf.function(experimental_relax_shapes=True)
     def train_step(self, x, y):
@@ -79,31 +77,38 @@ class Trainer(tf.Module):
 
     @tf.function(experimental_relax_shapes=True)
     def update_step(self):
-        noises = tf.random.normal([self.num_evals] + self.input_shape)
-        losses = tf.zeros([self.num_evals, self.solver_samples])
-        for eval_idx in range(self.num_evals):
-            if self.is_discrete:
-                sol_x = tf.math.softmax(self.sol_x) + noises[eval_idx]
-            else:
-                sol_x = self.sol_x + noises[eval_idx]
+        avg_loss = 0.0
+        avg_mean = 0.0
+        avg_log_stddev = 0.0
+        avg_score_stddev = 0.0
 
-            d = self.ema_model.get_distribution(sol_x, training=False)
-            losses[eval_idx] = -(d.mean() - self.coef_stddev * tf.math.log(d.stddev()))
+        for sol_x, sol_x_opt in zip(self.sol_x_list, self.sol_x_opt_list):
+            with tf.GradientTape(persistent=True) as tape:
+                tape.watch(sol_x)
+                inp = tf.tile(sol_x, [self.num_evals, 1])
+                if self.is_discrete:
+                    inp = self.perturb_fn(tf.math.softmax(inp))
+                else:
+                    inp = self.perturb_fn(inp)
 
-        tf.argsort(losses, axis=0)
+                d = self.model.get_distribution(inp, training=False)
+                scores = -(d.mean() - self.coef_stddev * tf.math.log(d.stddev()))
+                loss = tf.reduce_max(scores)
+                #tf.math.top_k(tf.reshape(scores, [-1]), k=(self.num_evals // 2))[0][-1]
 
-        sol_x_grad = tape.gradient(loss, self.sol_x)
-        sol_x_grad = tf.clip_by_norm(sol_x_grad, 1.0)
-        self.sol_x_opt.apply_gradients([[sol_x_grad, self.sol_x]])
+            sol_x_grad = tape.gradient(loss, sol_x)
+            sol_x_grad = tf.clip_by_norm(sol_x_grad, 1.0)
+            sol_x_opt.apply_gradients([[sol_x_grad, sol_x]])
 
-        travelled = tf.linalg.norm(self.sol_x - self.init_sol_x) / tf.cast(
-            tf.shape(self.sol_x)[0], dtype=tf.float32
-        )
+            avg_loss += loss / len(self.sol_x_list)
+            avg_mean += d.mean() / len(self.sol_x_list)
+            avg_log_stddev += tf.math.log(d.stddev()) / len(self.sol_x_list)
+            avg_score_stddev += tf.math.reduce_std(scores) / len(self.sol_x_list)
 
         statistics = dict()
         statistics["loss"] = tf.reduce_mean(loss)
         statistics["mean"] = tf.reduce_mean(d.mean())
         statistics["log_stddev"] = tf.reduce_mean(tf.math.log(d.stddev()))
-        statistics["travelled"] = travelled
+        statistics["score_std"] = tf.reduce_mean(avg_score_stddev)
 
         return statistics
