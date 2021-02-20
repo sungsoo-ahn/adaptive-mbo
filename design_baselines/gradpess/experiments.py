@@ -256,7 +256,7 @@ def hopper(local_dir, cpus, gpus, num_parallel, num_samples):
             "hidden_size": 256,
             "model_lr": 0.001,
             "sol_x_samples": 128,
-            "sol_x_lr": 0.001,
+            "sol_x_lr": 0.01,
             "coef_pessimism": tune.grid_search([1e0, 1e1]),
             "coef_stddev": 1.0,
             "score_freq": 100,
