@@ -60,7 +60,7 @@ def gradpess(config):
 
     indices = tf.math.top_k(task_y[:, 0], k=config["sol_x_samples"])[1]
     sol_x =  tf.gather(task_x, indices, axis=0)
-    sol_x_opt = tf.keras.optimizers.Adam(learning_rate=config["sol_x_lr"])
+    sol_x_opt = tf.keras.optimizers.SGD(learning_rate=config["sol_x_lr"])
 
     perturb_fn = lambda x: cont_noise(x, noise_std=config["continuous_noise_std"])
     model = ForwardModel(
