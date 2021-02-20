@@ -135,9 +135,10 @@ class Trainer(tf.Module):
             tf.shape(self.sol_x), ord=self.adv_norm, eps=self.adv_eps, dtype=self.sol_x.dtype
             )
         adv_sol_x = self.adv_perturb(self.model, self.sol_x, init_eta=init_eta)
+        eta_norm = tf.norm(tf.reshape(sol_x - adv_sol_x, [tf.shape(sol_x)[0], -1]), axis=1)
 
         if self.is_discrete:
-            x = tf.math.softmax(inp)
+            x = tf.math.softmax(x)
             sol_x = tf.math.softmax(sol_x)
             adv_sol_x = tf.math.softmax(adv_sol_x)
 
@@ -162,13 +163,14 @@ class Trainer(tf.Module):
             ema_var.assign(self.ema_rate * ema_var + (1 - self.ema_rate) * var)
 
         statistics = dict()
-        statistics["loss/nll"] = loss_nll
-        statistics["loss/pess"] = loss_pess
-        statistics["loss/total"] = loss_total
+        statistics["loss/nll"] = tf.reduce_mean(loss_nll)
+        statistics["loss/pess"] = tf.reduce_mean(loss_pess)
+        statistics["loss/total"] = tf.reduce_mean(loss_total)
         statistics["d/mean"] = tf.reduce_mean(d.mean())
         statistics["d/rank_corr"] = rank_correlation
         statistics["sol_d/mean"] = tf.reduce_mean(sol_d_mean)
         statistics["adv_sol_d/mean"] = tf.reduce_mean(adv_sol_d_mean)
+        statistics["eta/norm"] = tf.reduce_mean(eta_norm)
 
         return statistics
 
@@ -196,11 +198,11 @@ class Trainer(tf.Module):
         adv_sol_x = self.adv_perturb(self.ema_model, self.sol_x, init_eta=0.0)
         self.sol_x.assign(adv_sol_x)
 
-        travelled = tf.linalg.norm(self.sol_x - self.init_sol_x) / tf.cast(
-            tf.shape(self.sol_x)[0], dtype=tf.float32
-        )
+        travelled = tf.norm(
+            tf.reshape(self.sol_x - self.init_sol_x, [tf.shape(self.sol_x)[0], -1]), axis=1
+            )
 
         statistics = dict()
-        statistics["travelled"] = travelled
+        statistics["travelled"] = tf.reduce_mean(travelled)
 
         return statistics

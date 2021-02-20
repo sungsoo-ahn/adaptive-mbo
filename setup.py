@@ -19,6 +19,7 @@ setup(
             "distil=design_baselines.distil.experiments:cli",
             "pess=design_baselines.pess.experiments:cli",
             "localsearch=design_baselines.localsearch.experiments:cli",
+            "gradpess=design_baselines.gradpess.experiments:cli",
         )
     },
 )
