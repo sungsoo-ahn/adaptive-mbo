@@ -123,7 +123,12 @@ Send2Trash==1.5.0
 soupsieve==2.0.1
 tabulate==0.8.7
 tape-proteins==0.3
+tensorboard==2.3.0
+tensorboard-plugin-wit==1.7.0
 tensorboardX==2.1
+tensorflow==2.3.1
+tensorflow-estimator==2.3.0
+tensorflow-probability==0.11.0
 termcolor==1.1.0
 terminado==0.8.3
 testpath==0.4.4

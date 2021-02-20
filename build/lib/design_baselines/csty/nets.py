@@ -1,8 +1,12 @@
+#import tensorflow_probability.layers as tfpl
 from tensorflow_probability import distributions as tfpd
+from tensorflow_probability import layers as tfpl
 import tensorflow.keras.layers as tfkl
 import tensorflow as tf
 import numpy as np
 from collections import defaultdict
+from tensorflow_addons.layers import SpectralNormalization
+
 
 class ForwardModel(tf.keras.Sequential):
     distribution = tfpd.Normal
@@ -19,9 +23,9 @@ class ForwardModel(tf.keras.Sequential):
 
         layers = [
             tfkl.Flatten(input_shape=input_shape),
-            tfkl.Dense(hidden, activation=tfkl.LeakyReLU()),
-            tfkl.Dense(hidden, activation=tfkl.LeakyReLU()),
-            tfkl.Dense(2),
+            tfpl.Dense(hidden, activation=tfkl.LeakyReLU()),
+            tfpl.Dense(hidden, activation=tfkl.LeakyReLU()),
+            tfpl.Dense(2),
         ]
 
         super(ForwardModel, self).__init__(layers)

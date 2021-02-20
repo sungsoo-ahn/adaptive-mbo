@@ -3,6 +3,7 @@ import tensorflow.keras.layers as tfkl
 import tensorflow as tf
 import numpy as np
 from collections import defaultdict
+from tensorflow_addons.layers import SpectralNormalization
 
 class ForwardModel(tf.keras.Sequential):
     distribution = tfpd.Normal
