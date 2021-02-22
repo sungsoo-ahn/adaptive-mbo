@@ -96,11 +96,7 @@ class Trainer(tf.Module):
             loss = -(d.mean() - self.coef_stddev * tf.math.log(d.stddev()))
 
         sol_x_grad = tape.gradient(loss, self.sol_x)
-
-        axis = list(range(1, len(sol_x_grad.get_shape())))
-        square = tf.maximum(1e-12, tf.reduce_sum(tf.square(sol_x_grad), axis, keepdims=True))
-        sol_x_grad = sol_x_grad / tf.sqrt(square)
-
+        sol_x_grad_norm = tf.norm(tf.reshape(sol_x_grad, [self.sol_x_samples, -1]), axis=1)
         self.sol_x_opt.apply_gradients([[sol_x_grad, self.sol_x]])
 
         travelled = tf.linalg.norm(self.sol_x - self.init_sol_x) / tf.cast(
@@ -112,5 +108,6 @@ class Trainer(tf.Module):
         statistics["mean"] = tf.reduce_mean(d.mean())
         statistics["log_stddev"] = tf.reduce_mean(tf.math.log(d.stddev()))
         statistics["travelled"] = travelled
+        statistics["sol_x_grad_norm"] = tf.reduce_mean(sol_x_grad_norm)
 
         return statistics

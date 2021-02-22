@@ -139,7 +139,7 @@ class StaticGraphTask(Task):
         # build the parallel tensorflow data loading pipeline
         train = tf.data.Dataset.from_tensor_slices(tuple(train_inputs))
         train = train.shuffle(size)
-        train = train.batch(batch_size)
+        train = train.batch(batch_size, drop_remainder=True)
 
         if val_size > 0:
             validate = tf.data.Dataset.from_tensor_slices(tuple(validate_inputs))
