@@ -19,8 +19,8 @@ class ForwardModel(tf.keras.Sequential):
 
         layers = [
             tfkl.Flatten(input_shape=input_shape),
-            tfkl.Dense(hidden, activation=tfkl.LeakyReLU()),
-            tfkl.Dense(hidden, activation=tfkl.LeakyReLU()),
+            tfkl.Dense(hidden, activation="softplus"),
+            tfkl.Dense(hidden, activation="softplus"),
             tfkl.Dense(2),
         ]
 
