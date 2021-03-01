@@ -3,7 +3,7 @@ from design_baselines.logger import Logger
 from design_baselines.utils import spearman
 from design_baselines.utils import soft_noise, cont_noise
 from design_baselines.gradpess.trainers import Trainer
-from design_baselines.gradpess.nets import ForwardModel
+from design_baselines.gradpess.nets import DoubleheadModel, SingleheadModel, NemoModel
 from collections import defaultdict
 import tensorflow as tf
 import numpy as np
@@ -42,28 +42,32 @@ def gradpess(config):
     # create the training task and logger
     logger = Logger(config["logging_dir"])
     task = StaticGraphTask(config["task"], **config["task_kwargs"])
-    if config["is_discrete"]:
-        task_x = soft_noise(task.x, config["discrete_smoothing"])
-        task_x = tf.math.log(task_x).numpy()
-        task_y = task.y
-    else:
-        task_x = task.x
-        task_y = task.y
-
 
     (task_x, mu_x, st_x), (task_y, mu_y, st_y) = normalize_dataset(
-        x=task_x,
-        y=task_y,
+        x=task.x,
+        y=task.y,
         normalize_xs=config["normalize_xs"],
         normalize_ys=config["normalize_ys"],
     )
 
     indices = tf.math.top_k(task_y[:, 0], k=config["sol_x_samples"])[1]
     sol_x =  tf.gather(task_x, indices, axis=0)
+    if config["is_discrete"]:
+        sol_x = tf.math.log(soft_noise(sol_x, keep=config["discrete_smoothing"]))
+
     sol_x_opt = tf.keras.optimizers.Adam(learning_rate=config["sol_x_lr"])
 
     perturb_fn = lambda x: cont_noise(x, noise_std=config["continuous_noise_std"])
-    model = ForwardModel(
+    model_class = {
+        "doublehead": DoubleheadModel,
+        "singlehead": SingleheadModel,
+        "nemo": NemoModel,
+    }.get(config["model_class"])
+    model = model_class(
+        input_shape=task.input_shape,
+        hidden=config["hidden_size"],
+    )
+    ema_model = model_class(
         input_shape=task.input_shape,
         hidden=config["hidden_size"],
     )
@@ -72,6 +76,8 @@ def gradpess(config):
     trainer = Trainer(
         model=model,
         model_opt=model_opt,
+        ema_model=ema_model,
+        ema_rate=config["ema_rate"],
         perturb_fn=perturb_fn,
         is_discrete=config["is_discrete"],
         sol_x=sol_x,

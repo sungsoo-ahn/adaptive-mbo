@@ -9,6 +9,8 @@ class Trainer(tf.Module):
         self,
         model,
         model_opt,
+        ema_model,
+        ema_rate,
         perturb_fn,
         is_discrete,
         sol_x,
@@ -20,6 +22,8 @@ class Trainer(tf.Module):
         super().__init__()
         self.model = model
         self.model_opt = model_opt
+        self.ema_model = ema_model
+        self.ema_rate = ema_rate
         self.perturb_fn = perturb_fn
         self.is_discrete = is_discrete
         self.init_sol_x = sol_x
@@ -29,7 +33,6 @@ class Trainer(tf.Module):
         self.coef_stddev = coef_stddev
         self.sol_x_samples = tf.shape(self.sol_x)[0]
 
-
     def get_sol_x(self):
         return self.sol_x.read_value()
 
@@ -38,8 +41,7 @@ class Trainer(tf.Module):
         x = self.perturb_fn(x)
 
         with tf.GradientTape() as outer_tape:
-            inp = tf.math.softmax(x) if self.is_discrete else x
-            d = self.model.get_distribution(inp, training=True)
+            d = self.model.get_distribution(x, training=True)
             loss_nll = -d.log_prob(y)
             rank_correlation = spearman(y[:, 0], d.mean()[:, 0])
 
@@ -60,6 +62,9 @@ class Trainer(tf.Module):
         grads = [tf.clip_by_norm(grad, 1.0) for grad in grads]
         self.model_opt.apply_gradients(zip(grads, self.model.trainable_variables))
 
+        for var, ema_var in zip(self.model.trainable_variables, self.ema_model.trainable_variables):
+            ema_var.assign(self.ema_rate * ema_var + (1 - self.ema_rate) * var)
+
         statistics = dict()
         statistics["loss/nll"] = loss_nll
         statistics["loss/pessimism"] = loss_pessimism
@@ -72,8 +77,7 @@ class Trainer(tf.Module):
 
     @tf.function(experimental_relax_shapes=True)
     def validate_step(self, x, y):
-        inp = tf.math.softmax(x) if self.is_discrete else x
-        d = self.model.get_distribution(inp, training=True)
+        d = self.model.get_distribution(x, training=True)
         loss_nll = -tf.reduce_mean(d.log_prob(y))
         rank_correlation = spearman(y[:, 0], d.mean()[:, 0])
         loss_total = loss_nll
@@ -92,7 +96,7 @@ class Trainer(tf.Module):
         with tf.GradientTape() as tape:
             tape.watch(self.sol_x)
             inp = tf.math.softmax(self.sol_x) if self.is_discrete else self.sol_x
-            d = self.model.get_distribution(inp, training=False)
+            d = self.ema_model.get_distribution(inp, training=False)
             loss = -(d.mean() - self.coef_stddev * tf.math.log(d.stddev()))
 
         sol_x_grad = tape.gradient(loss, self.sol_x)
