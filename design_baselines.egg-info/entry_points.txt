@@ -4,6 +4,7 @@ design-baselines = design_baselines.cli:cli
 distil = design_baselines.distil.experiments:cli
 energy = design_baselines.energy.experiments:cli
 ensemble = design_baselines.ensemble.experiments:cli
+fastgradpess = design_baselines.fastgradpess.experiments:cli
 gradpess = design_baselines.gradpess.experiments:cli
 localsearch = design_baselines.localsearch.experiments:cli
 pess = design_baselines.pess.experiments:cli

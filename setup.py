@@ -20,6 +20,7 @@ setup(
             "pess=design_baselines.pess.experiments:cli",
             "localsearch=design_baselines.localsearch.experiments:cli",
             "gradpess=design_baselines.gradpess.experiments:cli",
+            "fastgradpess=design_baselines.fastgradpess.experiments:cli",
         )
     },
 )

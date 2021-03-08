@@ -2,8 +2,8 @@ from design_baselines.data import StaticGraphTask
 from design_baselines.logger import Logger
 from design_baselines.utils import spearman
 from design_baselines.utils import soft_noise, cont_noise
-from design_baselines.gradpess.trainers import Trainer
-from design_baselines.gradpess.nets import DoubleheadModel, SingleheadModel, NemoModel
+from design_baselines.fastgradpess.trainers import Trainer
+from design_baselines.fastgradpess.nets import DoubleheadModel, SingleheadModel, NemoModel
 from collections import defaultdict
 import tensorflow as tf
 import numpy as np
@@ -38,7 +38,7 @@ def normalize_dataset(x, y, normalize_xs, normalize_ys):
     return (x, mu_x, st_x), (y, mu_y, st_y)
 
 
-def gradpess(config):
+def fastgradpess(config):
     # create the training task and logger
     logger = Logger(config["logging_dir"])
     task = StaticGraphTask(config["task"], **config["task_kwargs"])
@@ -55,7 +55,7 @@ def gradpess(config):
     if config["is_discrete"]:
         sol_x = tf.math.log(soft_noise(sol_x, keep=config["discrete_smoothing"]))
 
-    sol_x_opt = tf.keras.optimizers.SGD(learning_rate=config["sol_x_lr"])
+    sol_x_opt = tf.keras.optimizers.Adam(learning_rate=config["sol_x_lr"])
 
     perturb_fn = lambda x: cont_noise(x, noise_std=config["continuous_noise_std"])
     model_class = {
@@ -82,6 +82,7 @@ def gradpess(config):
         is_discrete=config["is_discrete"],
         sol_x=sol_x,
         sol_x_opt=sol_x_opt,
+        sol_x_eps=config["sol_x_eps"],
         coef_pessimism=config["coef_pessimism"],
         coef_stddev=config["coef_stddev"],
         )
@@ -105,29 +106,27 @@ def gradpess(config):
             logger.record(name, tf.reduce_mean(tf.concat(tsrs, axis=0)), epoch)
 
     ### Main training
-    step = 0
-    update = 0
-    while update < config["updates"]:
-        train_statistics = defaultdict(list)
-        for x, y in train_data:
-            for name, tsr in trainer.train_step(x, y).items():
-                train_statistics[f"train/{name}"].append(tsr)
+    for update in range(config["updates"]):
+        step = 0
+        statistics = defaultdict(list)
+        while step < config["steps_per_update"]:
+            for x, y in train_data:
+                for name, tsr in trainer.train_step(x, y).items():
+                    statistics[f"train/{name}"].append(tsr)
 
-            step += 1
-            if (step + 1) % config["steps_per_update"] == 0:
-                statistics = trainer.update_step()
-                for name, tsr in statistics.items():
-                    logger.record(f"update/{name}", tsr, update)
-
-                if (update + 1) % config["score_freq"] == 0:
-                    sol_x = trainer.get_sol_x()
-                    inp = tf.math.softmax(sol_x) if config["is_discrete"] else sol_x
-                    score = task.score(inp * st_x + mu_x)
-                    logger.record(f"update/score", score, update, percentile=True)
-
-                update += 1
-                if update + 1 == config["updates"]:
+                step += 1
+                if step + 1 == config["steps_per_update"]:
                     break
 
-        for name, tsrs in train_statistics.items():
-            logger.record(name, tf.reduce_mean(tf.concat(tsrs, axis=0)), step)
+        for name, tsrs in statistics.items():
+            logger.record(name, tf.reduce_mean(tf.concat(tsrs, axis=0)), update)
+
+        statistics = trainer.update_step()
+        for name, tsr in statistics.items():
+            logger.record(f"update/{name}", tsr, update)
+
+        sol_x = trainer.get_sol_x()
+        if (update + 1) % config["score_freq"] == 0:
+            inp = tf.math.softmax(sol_x) if config["is_discrete"] else sol_x
+            score = task.score(inp * st_x + mu_x)
+            logger.record(f"update/score", score, update, percentile=True)

@@ -15,6 +15,7 @@ class Trainer(tf.Module):
         is_discrete,
         sol_x,
         sol_x_opt,
+        sol_x_eps,
         coef_pessimism,
         coef_stddev,
     ):
@@ -29,6 +30,7 @@ class Trainer(tf.Module):
         self.init_sol_x = sol_x
         self.sol_x = tf.Variable(sol_x)
         self.sol_x_opt = sol_x_opt
+        self.sol_x_eps = sol_x_eps
         self.coef_pessimism = coef_pessimism
         self.coef_stddev = coef_stddev
         self.sol_x_samples = tf.shape(self.sol_x)[0]
@@ -40,7 +42,7 @@ class Trainer(tf.Module):
     def train_step(self, x, y):
         x = self.perturb_fn(x)
 
-        with tf.GradientTape() as outer_tape:
+        with tf.GradientTape() as tape:
             d = self.model.get_distribution(x, training=True)
             loss_nll = -d.log_prob(y)
             rank_correlation = spearman(y[:, 0], d.mean()[:, 0])
@@ -52,23 +54,31 @@ class Trainer(tf.Module):
                 loss_sol_x = sol_d.mean() - self.coef_stddev * tf.math.log(sol_d.stddev())
 
             sol_x_grad = inner_tape.gradient(loss_sol_x, self.sol_x)
-            loss_pessimism = tf.norm(tf.reshape(sol_x_grad, [self.sol_x_samples, -1]), axis=1)
+            sol_neg_x = self.sol_x + self.sol_x_eps * sol_x_grad
+            inp = tf.math.softmax(sol_neg_x) if self.is_discrete else sol_neg_x
+            sol_neg_d = self.model.get_distribution(inp, training=True)
+            loss_sol_neg_x = sol_neg_d.mean() - self.coef_stddev * tf.math.log(sol_neg_d.stddev())
+
+            loss_pessimism = ((loss_sol_x - loss_sol_neg_x) / self.sol_x_eps) ** 2
             loss_total = (
                 tf.reduce_mean(loss_nll) + self.coef_pessimism * tf.reduce_mean(loss_pessimism)
                 )
 
         # take gradient steps on the model
-        grads = outer_tape.gradient(loss_total, self.model.trainable_variables)
+        grads = tape.gradient(loss_total, self.model.trainable_variables)
         grads = [tf.clip_by_norm(grad, 1.0) for grad in grads]
         self.model_opt.apply_gradients(zip(grads, self.model.trainable_variables))
 
         for var, ema_var in zip(self.model.trainable_variables, self.ema_model.trainable_variables):
             ema_var.assign(self.ema_rate * ema_var + (1 - self.ema_rate) * var)
 
+        sol_x_grad_norm = tf.norm(tf.reshape(sol_x_grad, [self.sol_x_samples, -1]), axis=1)
+
         statistics = dict()
         statistics["loss/nll"] = loss_nll
         statistics["loss/pessimism"] = loss_pessimism
         statistics["loss/total"] = loss_total
+        statistics["sol_x_grad_norm"] = tf.reduce_mean(sol_x_grad_norm)
         statistics["mean"] = tf.reduce_mean(d.mean())
         statistics["stddev"] = tf.reduce_mean(d.stddev())
         statistics["rank_corr"] = rank_correlation
@@ -77,7 +87,7 @@ class Trainer(tf.Module):
 
     @tf.function(experimental_relax_shapes=True)
     def validate_step(self, x, y):
-        d = self.model.get_distribution(x, training=True)
+        d = self.ema_model.get_distribution(x, training=True)
         loss_nll = -tf.reduce_mean(d.log_prob(y))
         rank_correlation = spearman(y[:, 0], d.mean()[:, 0])
         loss_total = loss_nll
